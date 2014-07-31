@@ -119,14 +119,13 @@ static int wr_write (const data_set_t *ds, /* {{{ */
   }
 
   assert (node->conn != NULL);
-  rr = redisCommand (node->conn, "ZADD %b %f %b", key, sizeof (key),
-    (double) vl->time, value, sizeof (value));
+  rr = redisCommand (node->conn, "ZADD %s %f %s", key, (double) vl->time, value);
   if (rr==NULL)
     WARNING("ZADD command error. key:%s", key);
 
-  rr = redisCommand (node->conn, "SADD collectd/values %b", ident, sizeof(ident));
+  rr = redisCommand (node->conn, "SADD collectd/values %s", ident);
   if (rr==NULL)
-    WARNING("SADD command error. ident:%s", ident);
+    WARNING("SADD command error. ident:%s", ident); 
 
   pthread_mutex_unlock (&node->lock);
 
