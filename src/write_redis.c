@@ -40,6 +40,8 @@ struct wr_node_s
   char *host;
   int port;
   struct timeval timeout;
+  _Bool store_rates;
+  _Bool pub_sub;
 
   redisContext *conn;
   pthread_mutex_t lock;
@@ -57,17 +59,18 @@ static int wr_write (const data_set_t *ds, /* {{{ */
   char ident[512];
   char key[512];
   char value[512];
-  size_t value_size;
-  char *value_ptr;
+//  size_t value_size;
+//  char *value_ptr;
   int status;
   redisReply   *rr;
-  int i;
+//  int i;
 
   status = FORMAT_VL (ident, sizeof (ident), vl);
   if (status != 0)
     return (status);
   ssnprintf (key, sizeof (key), "collectd/%s", ident);
 
+/*
   memset (value, 0, sizeof (value));
   value_size = sizeof (value);
   value_ptr = &value[0];
@@ -102,6 +105,12 @@ static int wr_write (const data_set_t *ds, /* {{{ */
   }
 
 #undef APPEND
+*/
+    status = format_values (value, sizeof (value), ds, vl, node->store_rates);
+    if (status != 0) {
+        ERROR ("write_redis plugin: error with format_values");
+        return (status);
+    }
 
   pthread_mutex_lock (&node->lock);
 
@@ -118,14 +127,28 @@ static int wr_write (const data_set_t *ds, /* {{{ */
     }
   }
 
-  assert (node->conn != NULL);
-  rr = redisCommand (node->conn, "ZADD %s %f %s", key, (double) vl->time, value);
-  if (rr==NULL)
-    WARNING("ZADD command error. key:%s", key);
+  if (node->pub_sub)
+    {
+      assert (node->conn != NULL);
+      rr = redisCommand (node->conn, "PUBLISH %s %s", key, value);
+      if (rr==NULL)
+        WARNING("PUBLISH command error. key:%s", key);
 
-  rr = redisCommand (node->conn, "SADD collectd/values %s", ident);
-  if (rr==NULL)
-    WARNING("SADD command error. ident:%s", ident); 
+      rr = redisCommand (node->conn, "SADD collectd/channels %s", ident);
+      if (rr==NULL)
+        WARNING("SADD command error. ident:%s", ident);
+  }
+  else
+  {
+      assert (node->conn != NULL);
+      rr = redisCommand (node->conn, "ZADD %s %f %s", key, CDTIME_T_TO_DOUBLE(vl->time), value);
+      if (rr==NULL)
+        WARNING("ZADD command error. key:%s", key);
+
+      rr = redisCommand (node->conn, "SADD collectd/values %s", ident);
+      if (rr==NULL)
+        WARNING("SADD command error. ident:%s", ident);
+  }
 
   pthread_mutex_unlock (&node->lock);
 
@@ -164,6 +187,8 @@ static int wr_config_node (oconfig_item_t *ci) /* {{{ */
   node->port = 0;
   node->timeout.tv_sec = 0;
   node->timeout.tv_usec = 1000;
+  node->store_rates = 0;
+  node->pub_sub = 0;
   node->conn = NULL;
   pthread_mutex_init (&node->lock, /* attr = */ NULL);
 
@@ -192,6 +217,12 @@ static int wr_config_node (oconfig_item_t *ci) /* {{{ */
     else if (strcasecmp ("Timeout", child->key) == 0) {
       status = cf_util_get_int (child, &timeout);
       if (status == 0) node->timeout.tv_usec = timeout;
+    }
+    else if (strcasecmp ("StoreRates", child->key) == 0) {
+      status = cf_util_get_boolean (child, &node->store_rates);
+    }
+    else if (strcasecmp ("PubSub", child->key) == 0) {
+      status = cf_util_get_boolean (child, &node->pub_sub);
     }
     else
       WARNING ("write_redis plugin: Ignoring unknown config option \"%s\".",
