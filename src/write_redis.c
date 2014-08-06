@@ -51,6 +51,49 @@ typedef struct wr_node_s wr_node_t;
 /*
  * Functions
  */
+int format_key (char *ret, int ret_len,
+        const value_list_t *vl)
+{
+  char *buffer;
+  size_t buffer_size;
+
+  buffer = ret;
+  buffer_size = (size_t) ret_len;
+
+#define APPEND(str) do {                                               \
+  size_t l = strlen (str);                                             \
+  if (l >= buffer_size)                                                \
+    return (ENOBUFS);                                                  \
+  memcpy (buffer, (str), l);                                           \
+  buffer += l; buffer_size -= l;                                       \
+} while (0)
+
+  assert (vl->plugin != NULL);
+  assert (vl->type != NULL);
+
+  //    APPEND (vl->hostname);
+  //    APPEND ("/");
+  APPEND (vl->plugin);
+  if ((vl->plugin_instance != NULL) && (vl->plugin_instance[0] != 0))
+  {
+    APPEND ("-");
+    APPEND (vl->plugin_instance);
+  }
+  APPEND ("/");
+  APPEND (vl->type);
+  if ((vl->type_instance != NULL) && (vl->type_instance[0] != 0))
+  {
+    APPEND ("-");
+    APPEND (vl->type_instance);
+  }
+  assert (buffer_size > 0);
+  buffer[0] = 0;
+
+  #undef APPEND
+
+  return (0);
+} /* int format_name */
+
 static int wr_write (const data_set_t *ds, /* {{{ */
     const value_list_t *vl,
     user_data_t *ud)
@@ -65,10 +108,10 @@ static int wr_write (const data_set_t *ds, /* {{{ */
   redisReply   *rr;
 //  int i;
 
-  status = FORMAT_VL (ident, sizeof (ident), vl);
+  status = format_key (ident, sizeof (ident), vl);
   if (status != 0)
     return (status);
-  ssnprintf (key, sizeof (key), "collectd/%s", ident);
+  ssnprintf (key, sizeof (key), "%s", ident);
 
 /*
   memset (value, 0, sizeof (value));
