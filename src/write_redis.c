@@ -175,11 +175,11 @@ static int wr_write (const data_set_t *ds, /* {{{ */
       assert (node->conn != NULL);
       rr = redisCommand (node->conn, "PUBLISH %s %s", key, value);
       if (rr==NULL)
-        WARNING("PUBLISH command error. key:%s", key);
+        WARNING("PUBLISH command error. CMD: PUBLISH %s %s", key, value);
 
       rr = redisCommand (node->conn, "SADD collectd/channels %s", ident);
       if (rr==NULL)
-        WARNING("SADD command error. ident:%s", ident);
+        WARNING("SADD command error. ident: SADD collectd/channels %s", ident);
   }
   else
   {
